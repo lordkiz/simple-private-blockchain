@@ -12,8 +12,12 @@ const SHA256 = require('crypto-js/sha256');
 const BlockClass = require('./block.js');
 const bitcoinMessage = require('bitcoinjs-message');
 
+// bitcoinMessage.verify can have UnhandledPromiseRejectionWarning: such as Error: Non-base58 character
+// hang up the socket so we don't add blocks unintentionally
+process.on('unhandledRejection', (reason, p) => {
+    throw new Error(reason)
+});
 class Blockchain {
-
     /**
      * Constructor of the class, you will need to setup your chain array and the height
      * of your chain (the length of your chain array).
@@ -64,7 +68,19 @@ class Blockchain {
     _addBlock(block) {
         let self = this;
         return new Promise(async (resolve, reject) => {
-           
+           try {
+               block.time = new Date().getTime()
+               if (self.height > -1) {
+                   block.previousBlockHash = self.chain[self.height].hash
+               }
+               block.height = self.height + 1
+               block.hash = SHA256(JSON.stringify(block)).toString()
+               self.chain.push(block)
+               self.height++
+               resolve({ success: true, error: null })
+           } catch (error) {
+               reject({ success: false, error })
+           }
         });
     }
 
@@ -78,7 +94,7 @@ class Blockchain {
      */
     requestMessageOwnershipVerification(address) {
         return new Promise((resolve) => {
-            
+            resolve(`${address}:${new Date().getTime().toString()}:starRegistry`)
         });
     }
 
@@ -102,7 +118,22 @@ class Blockchain {
     submitStar(address, message, signature, star) {
         let self = this;
         return new Promise(async (resolve, reject) => {
-            
+            const messageTime = parseInt(message.split(':')[1])
+            const currentTime = new Date().getTime()
+            const timeElapsedInSecs = (currentTime - messageTime) / 1000
+            if (timeElapsedInSecs > 300) {
+                reject("Time is greater than 5 mins")
+            }
+            const verified = bitcoinMessage.verify(message, address, signature)
+            if (verified) {
+                const block = new BlockClass.Block({data: star, owner: address });
+                const blockAddedStatus = await this._addBlock(block)
+                if (blockAddedStatus.success) {
+                    resolve(block)
+                }
+                reject(`Failed to add block due to: ${blockAddedStatus.error}`)
+            }
+            reject("Unable to verify message.")
         });
     }
 
@@ -115,7 +146,8 @@ class Blockchain {
     getBlockByHash(hash) {
         let self = this;
         return new Promise((resolve, reject) => {
-           
+           const found = self.chain.find((block) => block.hash === hash)
+           resolve(found)
         });
     }
 
@@ -146,7 +178,14 @@ class Blockchain {
         let self = this;
         let stars = [];
         return new Promise((resolve, reject) => {
-            
+            self.chain.forEach((block) => {
+                block.getBData().then((body) => {
+                    if (body && body.owner && body.owner === address) {
+                        stars.push({ star: body.data, owner: body.owner })
+                    }
+                })
+            })
+            resolve(stars)
         });
     }
 
@@ -160,7 +199,20 @@ class Blockchain {
         let self = this;
         let errorLog = [];
         return new Promise(async (resolve, reject) => {
+            let prevHash = null
+            self.chain.forEach((block) => {
+                block.validate().then((valid) => {
+                    const isValid = valid && block.previousBlockHash === prevHash
+                    if (!isValid) {
+                        errorLog.push({ blockHash: block.hash, valid: isValid })
+                    }
+                }).catch((e) => {
+                    // next
+                })
+                prevHash = block.hash
+            })
             
+            resolve(errorLog)
         });
     }
 
