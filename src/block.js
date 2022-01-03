@@ -9,6 +9,7 @@
  *  run asynchronous.
  */
 
+const { json } = require('body-parser');
 const SHA256 = require('crypto-js/sha256');
 const hex2ascii = require('hex2ascii');
 
@@ -41,10 +42,7 @@ class Block {
             // Save in auxiliary variable the current block hash
             try {
                 const existingHash = self.hash
-                let block = new Block(JSON.parse(hex2ascii(self.body)))
-                block.height = self.height;   
-                block.time = self.time;
-                block.previousBlockHash = self.previousBlockHash; 
+                const block = { ...self, hash: null }
                 const currentBlockHash = SHA256(JSON.stringify(block)).toString()
                 resolve(existingHash === currentBlockHash)
             } catch (error) {
