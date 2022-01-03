@@ -39,9 +39,17 @@ class Block {
         let self = this;
         return new Promise((resolve, reject) => {
             // Save in auxiliary variable the current block hash
-            const existingHash = self.hash
-            const currentBlockHash = SHA256(JSON.stringify(self)).toString()
-            resolve(existingHash === currentBlockHash)
+            try {
+                const existingHash = self.hash
+                let block = new Block(JSON.parse(hex2ascii(self.body)))
+                block.height = self.height;   
+                block.time = self.time;
+                block.previousBlockHash = self.previousBlockHash; 
+                const currentBlockHash = SHA256(JSON.stringify(block)).toString()
+                resolve(existingHash === currentBlockHash)
+            } catch (error) {
+                reject(error)
+            }
                                             
             // Recalculate the hash of the Block
             // Comparing if the hashes changed

@@ -68,19 +68,23 @@ class Blockchain {
     _addBlock(block) {
         let self = this;
         return new Promise(async (resolve, reject) => {
-           try {
-               block.time = new Date().getTime()
-               if (self.height > -1) {
-                   block.previousBlockHash = self.chain[self.height].hash
-               }
-               block.height = self.height + 1
-               block.hash = SHA256(JSON.stringify(block)).toString()
-               self.chain.push(block)
-               self.height++
-               resolve({ success: true, error: null })
-           } catch (error) {
-               reject({ success: false, error })
-           }
+            const errors = await this.validateChain()
+            if (errors.length) {
+                reject(`Chain has been compromised. Compromised blocks: ${errors}`)
+            }
+            try {
+                block.time = new Date().getTime()
+                if (self.height > -1) {
+                    block.previousBlockHash = self.chain[self.height].hash
+                }
+                block.height = self.height + 1
+                block.hash = SHA256(JSON.stringify(block)).toString()
+                self.chain.push(block)
+                self.height++
+                resolve({ success: true, error: null })
+            } catch (error) {
+                reject({ success: false, error })
+            }
         });
     }
 
@@ -206,10 +210,13 @@ class Blockchain {
                     if (!isValid) {
                         errorLog.push({ blockHash: block.hash, valid: isValid })
                     }
+                    prevHash = block.hash
                 }).catch((e) => {
+                    errorLog.push({ blockHash: block.hash, valid: false, error: e })
                     // next
+                    prevHash = block.hash
                 })
-                prevHash = block.hash
+                
             })
             
             resolve(errorLog)
